@@ -9,7 +9,7 @@ The extension does not open a new popup, tab, or window to read the text elsewhe
 
 To accomplish this, inspiration was heavily taken from Microsoft Edge's own Text-To-Speech system.
 
-##This uses voices installed on your operating system.
+## This uses voices installed on your operating system.
 
 Instructions for enabling MS Edge voices are pending.
 
