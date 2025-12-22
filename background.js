@@ -5,6 +5,7 @@ let isPaused = false;
 let activeTtsTabId = null;
 let selectionOnly = false;
 let currentSentenceText = "";
+let pendingTextToSpeak = null;
 
 chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({ id: "readAloud", title: "Read Aloud", contexts: ["page"] });
@@ -51,6 +52,12 @@ async function handleAudioEnded() {
                 return;
             }
 
+            if (isPaused) {
+                pendingTextToSpeak = nextText;
+                pushUiUpdate();
+                return;
+            }
+
             await runTTS(nextText);
         } catch (error) {
             console.error("Error during transition to next block:", error);
@@ -63,6 +70,7 @@ async function handleAudioEnded() {
 
 async function runTTS(textToSpeak) {
     chrome.tts.stop();
+    pendingTextToSpeak = null;
 
     const settings = await chrome.storage.sync.get({
         voice: null,
@@ -106,6 +114,7 @@ function stopTTS(preserveTabId = false) {
     runningTTS = false;
     isPaused = false;
     currentSentenceText = "";
+    pendingTextToSpeak = null;
     pushUiUpdate();
 
     if (!preserveTabId) {
@@ -123,9 +132,13 @@ function pauseTTS() {
 
 function resumeTTS() {
     if (runningTTS && isPaused) {
-        chrome.tts.resume();
-        isPaused = false;
-        pushUiUpdate();
+        if (pendingTextToSpeak) {
+            runTTS(pendingTextToSpeak);
+        } else {
+            chrome.tts.resume();
+            isPaused = false;
+            pushUiUpdate();
+        }
     }
 }
 
