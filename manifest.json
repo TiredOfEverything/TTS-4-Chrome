@@ -1,0 +1,65 @@
+{
+    "manifest_version": 3,
+    "name": "Chrome Native TTS Reader",
+    "version": "1.3",
+    "description": "Read Aloud using native Chrome TTS voices.",
+    "permissions": [
+        "storage",
+        "contextMenus",
+        "activeTab",
+        "scripting",
+        "tts"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "Readability.js",
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "popup.html",
+                "popup.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "commands": {
+        "toggle-play-pause": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+U",
+                "mac": "Command+Shift+U"
+            },
+            "description": "Start, Play, or Pause Read Aloud"
+        },
+        "previous-block": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+Left",
+                "mac": "Command+Shift+Left"
+            },
+            "description": "Read the previous paragraph/sentence"
+        },
+        "next-block": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+Right",
+                "mac": "Command+Shift+Right"
+            },
+            "description": "Read the next paragraph/sentence"
+        }
+    }
+}

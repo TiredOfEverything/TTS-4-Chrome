@@ -1,0 +1,162 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Read Aloud Settings</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: sans-serif;
+            font-size: 0.9em;
+            color: #333;
+            margin: 0;
+            width: 320px;
+        }
+        #content-wrapper {
+            padding: 1em;
+            display: flex;
+            flex-direction: column;
+        }
+        .tab-buttons {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 1em;
+        }
+        .tab-button {
+            padding: 8px 12px;
+            cursor: pointer;
+            border: none;
+            background-color: transparent;
+            font-size: 0.9em;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            color: #555;
+        }
+        .tab-button.active {
+            border-bottom-color: #007bff;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .tab-pane {
+            display: none;
+            flex-direction: column;
+            gap: 1em;
+        }
+        .tab-pane.active {
+            display: flex;
+        }
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5em;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        select {
+            padding: 5px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            padding-bottom: 0.2em;
+            border-bottom: 1px solid #ddd;
+        }
+        .highlight-section {
+            background-color: #f8f9fa;
+            padding: 0.8em;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        button.action-btn {
+            padding: 6px 12px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        button.action-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div id="content-wrapper">
+        <div class="tab-buttons">
+            <button class="tab-button active" data-tab="main-tab">Main</button>
+            <button class="tab-button" data-tab="advanced-tab">Advanced</button>
+        </div>
+
+        <div class="tab-content">
+            <div id="main-tab" class="tab-pane active">
+                <label>
+                    Choose a voice:
+                    <select id="voiceSelect" data-setting="voice"></select>
+                </label>
+                <label>
+                    Speed (0.5 to 2.0):
+                    <input type="range" id="sliderInput" min="0.5" max="2.0" step="0.1" data-setting="rate" />
+                    <span id="sliderValue"></span>
+                </label>
+                <label>
+                    Pitch (0.5 to 2.0):
+                    <input type="range" id="pitchSlider" min="0.5" max="2.0" step="0.1" data-setting="pitch" />
+                    <span id="pitchValue"></span>
+                </label>
+            </div>
+
+            <div id="advanced-tab" class="tab-pane">
+                <label>
+                    Navigation Mode:
+                    <select id="navModeSelect" data-setting="navigationMode">
+                        <option value="block">Block</option>
+                        <option value="sentence">Sentence</option>
+                    </select>
+                </label>
+
+                <div class="section-title">Reading Area</div>
+                <div class="highlight-section button-group">
+                    <button id="btnEditReadingArea" class="action-btn">Adjust Area</button>
+                    <button id="btnSaveReadingArea" class="action-btn" style="display:none; background-color: #28a745;">Save Changes</button>
+                </div>
+
+                <div class="section-title">Highlighting Options</div>
+                <div class="highlight-section">
+                    <label>
+                        Block/Sentence Highlight Color:
+                        <input type="color" id="highlightColorInput" data-setting="highlightColor" />
+                    </label>
+                    <label>
+                        Block/Sentence Transparency (%):
+                        <input type="range" id="highlightTransparencyInput" min="0" max="100" value="100"
+                            data-setting="highlightTransparency" />
+                        <span id="highlightTransparencyValue">100%</span>
+                    </label>
+                    <label>
+                        Word Highlight Color:
+                        <input type="color" id="wordHighlightColorInput" data-setting="wordHighlightColor" />
+                    </label>
+                    <label>
+                        Word Transparency (%):
+                        <input type="range" id="wordHighlightTransparencyInput" min="0" max="100" value="100"
+                            data-setting="wordHighlightTransparency" />
+                        <span id="wordHighlightTransparencyValue">100%</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
