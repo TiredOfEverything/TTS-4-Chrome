@@ -190,7 +190,6 @@ let currentBlockIndex = -1;
 let currentSentenceIndex = -1;
 let currentNavigationMode = "block";
 
-// ORIGINAL FUNCTION: buildWordMap (Restored)
 function buildWordMap(dirtyText, cleanText) {
     const map = [];
     let dirtyPtr = 0;
@@ -202,7 +201,7 @@ function buildWordMap(dirtyText, cleanText) {
             continue;
         }
 
-        const wordStartClean = cleanPtr; // Added purely for Chrome TTS mapping
+        const wordStartClean = cleanPtr; 
         while (cleanPtr < cleanText.length && !/\s/.test(cleanText[cleanPtr])) {
             cleanPtr++;
         }
@@ -230,7 +229,7 @@ function buildWordMap(dirtyText, cleanText) {
                 text: currentCleanWord,
                 startIndex: wordStartDirty,
                 endIndex: dirtyPtr,
-                cleanIndex: wordStartClean // Only new property added to support Chrome TTS
+                cleanIndex: wordStartClean 
             });
         } else {
             console.warn(`Read Aloud: Could not fully align word "${currentCleanWord}". Highlighting may be affected.`);
@@ -239,13 +238,7 @@ function buildWordMap(dirtyText, cleanText) {
     return map;
 }
 
-// MODIFIED FUNCTION: splitIntoSentences
-// Updated regex to prevent splitting on dots followed by any word character (digit/letter/underscore)
-// This handles 3.X, 3.Y, 3.14, v1.2.beta, etc.
 function splitIntoSentences(text) {
-    // (?:[^.!?]|\.(?=\w))+ matches:
-    // 1. Any character that is NOT . ! ?
-    // 2. A dot (.) if followed immediately by a word char [a-zA-Z0-9_]
     const sentences = text.match(/(?:[^.!?]|\.(?=\w))+[.!?]*['"”’)\}\]]*(\s+|$)/g) || [text];
     return sentences.map(s => s.trim()).filter(s => s.length > 0);
 }
@@ -259,7 +252,6 @@ async function loadNavigationMode() {
     }
 }
 
-// ORIGINAL FUNCTION: extractReadableBlocks (Restored logic)
 function extractReadableBlocks() {
 	readableBlocks = [];
 	readableSentences = [];
@@ -307,7 +299,6 @@ function extractReadableBlocks() {
                     const sentenceWordCount = (sentenceText.match(/\S+/g) || []).length;
                     const wordMapSlice = wordMap.slice(wordMapCursor, wordMapCursor + sentenceWordCount);
 
-                    // NEW: Compute normalized cleanIndex for Chrome TTS offset matching in Sentence Mode
                     if (wordMapSlice.length > 0) {
                         const baseClean = wordMapSlice[0].cleanIndex;
                         wordMapSlice.forEach(w => w.localCleanIndex = w.cleanIndex - baseClean);
@@ -436,7 +427,26 @@ function clearHighlight() {
 	}
 }
 
-// UPDATE: highlightCurrentBlock with custom auto-scroll logic
+// === NEW HELPER FUNCTION: Find scrollable parent ===
+function getScrollParent(node) {
+    if (!node) return null;
+    let parent = node.parentElement;
+    
+    // Stop at document.body/html, we treat those as "window"
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+        const style = window.getComputedStyle(parent);
+        const overflowY = style.overflowY;
+        const isScrollable = overflowY !== 'visible' && overflowY !== 'hidden';
+        
+        // Ensure it actually has scrollable content
+        if (isScrollable && parent.scrollHeight > parent.clientHeight) {
+            return parent;
+        }
+        parent = parent.parentElement;
+    }
+    return null;
+}
+
 function highlightCurrentBlock() {
 	clearHighlight();
 
@@ -500,24 +510,34 @@ function highlightCurrentBlock() {
 		const rect = elementToScrollTo.getBoundingClientRect();
 		const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
         
-        // Reading Area Calculation
         const triggerY = viewportHeight * (readingAreaBottom / 100);
         const targetY = viewportHeight * (readingAreaTop / 100);
 
-        // Check if element's top is below the trigger line OR above the viewport completely
-        // We use rect.top for consistency with the "reaching" concept.
+        // Check if element is outside the "Reading Area"
 		if (rect.top > triggerY || rect.bottom < 0) {
-            // Scroll logic: We want rect.top to be at targetY
-            // Current absolute Y of element = window.scrollY + rect.top
-            // Desired scrollY + targetY = window.scrollY + rect.top
-            // Desired scrollY = window.scrollY + rect.top - targetY
             
-			const targetScrollPosition = window.scrollY + rect.top - targetY;
+            // === MODIFIED SCROLL LOGIC ===
+            const scrollParent = getScrollParent(elementToScrollTo);
+            
+            if (scrollParent) {
+                // If nested in a scrollable div (like on Android Developer site)
+                const currentScrollTop = scrollParent.scrollTop;
+                // Calculate new position: currentScroll + offset from top - desired top position
+                const targetScrollPosition = currentScrollTop + rect.top - targetY;
 
-			window.scrollTo({
-				top: targetScrollPosition,
-				behavior: 'smooth'
-			});
+                scrollParent.scrollTo({
+                    top: targetScrollPosition,
+                    behavior: 'smooth'
+                });
+            } else {
+                // Standard Window scrolling
+                const targetScrollPosition = window.scrollY + rect.top - targetY;
+                window.scrollTo({
+                    top: targetScrollPosition,
+                    behavior: 'smooth'
+                });
+            }
+            // =============================
 		}
 	}
 }
@@ -583,7 +603,6 @@ async function getBlockContainingSelection(selectionText) {
 		element = element.parentElement;
 	}
 
-    // Fallback
     const cleanSel = normalize(sel.toString());
     currentBlockWordMap = buildWordMap(sel.toString(), cleanSel);
 	return cleanSel;
@@ -626,7 +645,6 @@ function createRangeFromOffsets(container, startOffset, endOffset) {
     return null;
 }
 
-// ORIGINAL FUNCTION: highlightWordByIndex (Restored logic)
 function highlightWordByIndex(wordIndex) {
     clearWordHighlight();
 
@@ -797,10 +815,8 @@ function removeToolbar() {
 	}
 }
 
-// === Reading Area Editor Functions ===
-
 let editorLines = { top: null, bottom: null };
-let isDragging = null; // 'top' or 'bottom'
+let isDragging = null;
 
 function createEditorLine(type, percentage, label) {
     const line = document.createElement("div");
@@ -819,7 +835,6 @@ function createEditorLine(type, percentage, label) {
 
 function toggleReadingAreaEditor() {
     if (editorLines.top) {
-        // Already active, do nothing or re-focus
         return;
     }
 
@@ -842,7 +857,6 @@ function handleEditorDrag(e) {
     const viewportHeight = window.innerHeight;
     let percentage = (e.clientY / viewportHeight) * 100;
     
-    // Clamp values
     percentage = Math.max(0, Math.min(100, percentage));
 
     if (isDragging === "top") {
@@ -876,8 +890,6 @@ async function saveReadingArea() {
         readingAreaBottom: readingAreaBottom
     });
 }
-
-// =====================================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 	const toolbar = document.getElementById("extension-toolbar");
@@ -927,9 +939,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "highlightWord":
             const charIndex = message.charIndex;
             if (currentBlockWordMap.length > 0) {
-                // Determine which word corresponds to the charIndex using normalized 'localCleanIndex'
-                // This bridges the Chrome TTS event (clean text index) with the DOM map (dirty offsets)
-                // without modifying the original DOM navigation logic.
                 const wordIndex = currentBlockWordMap.findIndex(w => 
                     charIndex >= (w.localCleanIndex ?? w.cleanIndex) && 
                     charIndex < ((w.localCleanIndex ?? w.cleanIndex) + w.text.length + 1)
