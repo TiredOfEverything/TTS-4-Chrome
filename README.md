@@ -9,7 +9,8 @@ The extension does not open a new popup, tab, or window to read the text elsewhe
 
 To accomplish this, inspiration was heavily taken from Microsoft Edge's own Text-To-Speech system.
 
-**This uses voices installed on your operating system.**
+##This uses voices installed on your operating system.
+
 Instructions for enabling MS Edge voices are pending.
 
 ## How to Use It
@@ -23,8 +24,6 @@ Instructions for enabling MS Edge voices are pending.
 - **Read entire page**: Right-click anywhere → "Read Aloud"
 - **Read from a specific spot**: Right-click on selected text → "Read Aloud From Here"  
 - **Read just selected text**: Select text containing more than 2 words → right-click → "Read Aloud Selection"
-
-## This extension was built and tested using Chromium and Brave.
 
 ## Installation
 
@@ -47,5 +46,7 @@ Since this extension is not yet on the Chrome Web Store, you must install it man
    - The extension should now appear in your list and be ready to use.
 
 *Note: Do not delete or move the folder after installation, or the extension will stop working.*
+
+## This extension was built and tested using Chromium and Brave.
 
 ## Found a bug? [Report it here](https://github.com/TiredOfEverything/TTS-4-Chrome/issues)
