@@ -103,13 +103,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
 });
 
-function normalize(str) {
+// Normalized text for TTS and Word Mapping (Preserves Case)
+function normalizeKeepCase(str) {
 	return str
 		.replace(/\[[0-9]+\]/g, "")
 		.replace(/\/[^\/]+\/|ℹ/g, "")
 		.replace(/\s+/g, " ")
-		.trim()
-		.toLowerCase();
+		.trim();
+}
+
+// Normalized text for Matching logic (Lower Cased)
+function normalize(str) {
+	return normalizeKeepCase(str).toLowerCase();
 }
 
 let voiceOptionsPanelResizeHandler = null;
@@ -214,12 +219,14 @@ function buildWordMap(dirtyText, cleanText) {
             const dirtyCharLower = dirtyText[dirtyPtr].toLowerCase();
             const cleanChar = currentCleanWord[alignPtr];
 
-            if (dirtyCharLower === cleanChar) {
+            // Case-insensitive comparison allows us to map mixed-case cleanText to dirtyText
+            if (dirtyCharLower === cleanChar.toLowerCase()) {
                 if (wordStartDirty === -1) {
                     wordStartDirty = dirtyPtr;
                 }
                 alignPtr++;
             } else if (wordStartDirty !== -1) {
+                // Mismatch after start - normally reset, but greedy matching usually works for simple text
             }
             dirtyPtr++;
         }
@@ -239,6 +246,13 @@ function buildWordMap(dirtyText, cleanText) {
 }
 
 function splitIntoSentences(text) {
+    // Use Intl.Segmenter for robust, locale-aware sentence splitting (handles U.S., Dr., etc.)
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+        const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+        return Array.from(segmenter.segment(text)).map(s => s.segment.trim()).filter(s => s.length > 0);
+    }
+    
+    // Fallback if Intl is not available (rare in modern Chrome)
     const sentences = text.match(/(?:[^.!?]|\.(?=\w))+[.!?]*['"”’)\}\]]*(\s+|$)/g) || [text];
     return sentences.map(s => s.trim()).filter(s => s.length > 0);
 }
@@ -276,12 +290,15 @@ function extractReadableBlocks() {
 		for (let i = liveIdx; i < liveBlocks.length; i++) {
 			const liveEl = liveBlocks[i];
             const dirtyText = liveEl.textContent;
+            
+            // Normalize with lowercase for flexible matching
             const cleanTextForComparison = normalize(dirtyText);
             const fragCleanText = normalize(text);
 
 			if (cleanTextForComparison === fragCleanText || cleanTextForComparison.startsWith(fragCleanText.slice(0, 40))) {
 
-                const cleanText = normalize(dirtyText);
+                // Use normalizeKeepCase for the actual TTS text to preserve "U.S." casing for Segmenter
+                const cleanText = normalizeKeepCase(dirtyText);
                 const wordMap = buildWordMap(dirtyText, cleanText);
 
 				const blockEntry = {
@@ -547,7 +564,8 @@ async function getBlockContainingSelection(selectionText) {
 	await loadNavigationMode();
 
 	const sel = window.getSelection();
-	if (!sel || sel.isCollapsed) return normalize(selectionText);
+    // Use normalizeKeepCase to preserve text structure
+	if (!sel || sel.isCollapsed) return normalizeKeepCase(selectionText);
 
 	let node = sel.anchorNode;
 	let element = (node.nodeType === Node.ELEMENT_NODE) ? node : node.parentElement;
@@ -603,7 +621,7 @@ async function getBlockContainingSelection(selectionText) {
 		element = element.parentElement;
 	}
 
-    const cleanSel = normalize(sel.toString());
+    const cleanSel = normalizeKeepCase(sel.toString());
     currentBlockWordMap = buildWordMap(sel.toString(), cleanSel);
 	return cleanSel;
 }
