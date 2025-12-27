@@ -4,7 +4,7 @@
 # Text-To-Speech For Chromium
 
 This is a Chromium extension bringing Text-To-Speech with a proper interface to the platform, born from my frustrations with other TTS extensions currently available on Chrome's web store.
-This project allows you to have pages read to you and highlights being spoken in real-time on the actual page itself.
+This project allows you to have pages read to you and highlights what is being spoken in real-time on the actual page itself.
 The extension does not open a new popup, tab, or window to read the text elsewhere, nor does it require users to highlight text, or necessitate copying and pasting between interfaces.
 
 To accomplish this, inspiration was heavily taken from Microsoft Edge's own Text-To-Speech system.
