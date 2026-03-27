@@ -272,7 +272,16 @@ function extractReadableBlocks() {
 	currentBlockIndex = -1;
 	currentSentenceIndex = -1;
 
-	const article = new Readability(document.cloneNode(true)).parse();
+	const docClone = document.cloneNode(true);
+	docClone.querySelectorAll("aside").forEach(asideEl => {
+		const parent = asideEl.parentNode;
+		if (!parent) return;
+		while (asideEl.firstChild) {
+			parent.insertBefore(asideEl.firstChild, asideEl);
+		}
+		parent.removeChild(asideEl);
+	});
+	const article = new Readability(docClone).parse();
 	if (!article?.content) return;
 
 	const frag = document.createElement("div");
@@ -295,7 +304,7 @@ function extractReadableBlocks() {
             const cleanTextForComparison = normalize(dirtyText);
             const fragCleanText = normalize(text);
 
-			if (cleanTextForComparison === fragCleanText || cleanTextForComparison.startsWith(fragCleanText.slice(0, 40))) {
+			if (liveEl.tagName === fragEl.tagName && cleanTextForComparison === fragCleanText) {
 
                 // Use normalizeKeepCase for the actual TTS text to preserve "U.S." casing for Segmenter
                 const cleanText = normalizeKeepCase(dirtyText);
@@ -316,9 +325,13 @@ function extractReadableBlocks() {
                     const sentenceWordCount = (sentenceText.match(/\S+/g) || []).length;
                     const wordMapSlice = wordMap.slice(wordMapCursor, wordMapCursor + sentenceWordCount);
 
+                    let adjustedWordMapSlice = wordMapSlice;
                     if (wordMapSlice.length > 0) {
                         const baseClean = wordMapSlice[0].cleanIndex;
-                        wordMapSlice.forEach(w => w.localCleanIndex = w.cleanIndex - baseClean);
+                        adjustedWordMapSlice = wordMapSlice.map(w => ({
+                            ...w,
+                            localCleanIndex: w.cleanIndex - baseClean
+                        }));
                     }
 
 					readableSentences.push({
@@ -326,7 +339,7 @@ function extractReadableBlocks() {
 						element: liveEl,
 						blockIndex: blockIdx,
 						sentenceIndex: sentenceIdx,
-                        wordMap: wordMapSlice
+                        wordMap: adjustedWordMapSlice
 					});
                     wordMapCursor += sentenceWordCount;
 				});
