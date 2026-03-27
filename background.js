@@ -8,6 +8,38 @@ let currentSentenceText = "";
 let pendingTextToSpeak = null;
 let resumeFromCurrentPosition = false;
 
+async function loadState() {
+    try {
+        const stored = await chrome.storage.local.get(['ttsState']);
+        if (stored.ttsState) {
+            runningTTS = stored.ttsState.runningTTS ?? false;
+            isPaused = stored.ttsState.isPaused ?? false;
+            activeTtsTabId = stored.ttsState.activeTtsTabId ?? null;
+            resumeFromCurrentPosition = stored.ttsState.resumeFromCurrentPosition ?? false;
+            console.log("TTS state restored:", { runningTTS, isPaused, activeTtsTabId, resumeFromCurrentPosition });
+        }
+    } catch (e) {
+        console.error("Failed to load TTS state:", e);
+    }
+}
+
+async function saveState() {
+    try {
+        await chrome.storage.local.set({
+            ttsState: {
+                runningTTS,
+                isPaused,
+                activeTtsTabId,
+                resumeFromCurrentPosition
+            }
+        });
+    } catch (e) {
+        console.error("Failed to save TTS state:", e);
+    }
+}
+
+loadState();
+
 chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({ id: "readAloud", title: "Read Aloud", contexts: ["page"] });
     chrome.contextMenus.create({ id: "readAloudFromHere", title: "Read Aloud From Here", contexts: ["selection"] });
@@ -106,6 +138,7 @@ async function runTTS(textToSpeak) {
     runningTTS = true;
     isPaused = false;
     pushUiUpdate();
+    saveState();
 
     chrome.tts.speak(textToSpeak, options);
 }
@@ -122,6 +155,7 @@ function stopTTS(preserveTabId = false) {
     if (!preserveTabId) {
         activeTtsTabId = null;
     }
+    saveState();
 }
 
 function pauseTTS() {
@@ -130,6 +164,7 @@ function pauseTTS() {
         isPaused = true;
         resumeFromCurrentPosition = true;
         pushUiUpdate();
+        saveState();
     }
 }
 
@@ -142,6 +177,7 @@ function resumeTTS() {
             isPaused = false;
             resumeFromCurrentPosition = true;
             pushUiUpdate();
+            saveState();
         }
     }
 }
@@ -153,7 +189,9 @@ function pushUiUpdate() {
         action: "updateUiState",
         state: currentState
     }).catch(error => {
-        if (runningTTS) stopTTS();
+        // Don't stop TTS on UI update errors - they might be transient
+        // Just log the error and continue
+        console.warn("Failed to update UI state:", error);
     });
 }
 
@@ -177,6 +215,15 @@ async function handlePlayPauseToggle() {
         else pauseTTS();
     } else if (activeTtsTabId && resumeFromCurrentPosition) {
         try {
+            const tab = await chrome.tabs.get(activeTtsTabId);
+            if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) {
+                console.log("Tab no longer valid, starting fresh");
+                activeTtsTabId = null;
+                resumeFromCurrentPosition = false;
+                saveState();
+                startPlayback(null);
+                return;
+            }
             const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getCurrentBlock" });
             if (response?.text?.trim()) {
                 runningTTS = true;
@@ -187,7 +234,11 @@ async function handlePlayPauseToggle() {
                 startPlayback(activeTtsTabId);
             }
         } catch (error) {
-            startPlayback(activeTtsTabId);
+            console.log("Error resuming, starting fresh:", error.message);
+            activeTtsTabId = null;
+            resumeFromCurrentPosition = false;
+            saveState();
+            startPlayback(null);
         }
     } else if (activeTtsTabId) {
         startPlayback(activeTtsTabId);
