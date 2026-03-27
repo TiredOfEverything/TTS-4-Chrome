@@ -1020,5 +1020,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "saveReadingAreaEditor":
             saveReadingArea();
             return;
+            
+        case "getIndices":
+            sendResponse({ currentBlockIndex, currentSentenceIndex });
+            return;
+            
+        case "setIndices":
+            if (readableBlocks.length === 0) extractReadableBlocks();
+            currentBlockIndex = message.currentBlockIndex ?? currentBlockIndex;
+            currentSentenceIndex = message.currentSentenceIndex ?? currentSentenceIndex;
+            highlightCurrentBlock();
+            sendResponse({ success: true });
+            return;
+            
+        case "findBlockByExactText":
+            const text = message.text;
+            if (!text) {
+                sendResponse({ found: false });
+                return;
+            }
+            if (readableBlocks.length === 0) extractReadableBlocks();
+            // Search in blocks first
+            let foundIdx = readableBlocks.findIndex(block => block.text === text);
+            if (foundIdx !== -1) {
+                currentBlockIndex = foundIdx;
+                currentSentenceIndex = -1;
+                highlightCurrentBlock();
+                sendResponse({ found: true, blockIndex: foundIdx, sentenceIndex: -1 });
+                return;
+            }
+            // Search in sentences
+            let foundSentIdx = readableSentences.findIndex(sentence => sentence.text === text);
+            if (foundSentIdx !== -1) {
+                currentSentenceIndex = foundSentIdx;
+                currentBlockIndex = readableSentences[foundSentIdx].blockIndex;
+                highlightCurrentBlock();
+                sendResponse({ found: true, blockIndex: currentBlockIndex, sentenceIndex: foundSentIdx });
+                return;
+            }
+            sendResponse({ found: false });
+            return;
 	}
 });
+
+// Notify background that content script is ready
+chrome.runtime.sendMessage({ action: "contentScriptReady" });
