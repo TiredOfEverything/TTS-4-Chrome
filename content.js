@@ -973,6 +973,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 			sendResponse({ text: currentText });
 			return true;
 
+		case "peekNextBlock":
+			peekNextBlockText().then(text => {
+				sendResponse({ text });
+			});
+			return true;
+
 		case "getBlockContainingSelection":
 			getBlockContainingSelection(message.selectionText || "").then(blockText => {
                 highlightCurrentBlock();

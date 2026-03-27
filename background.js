@@ -7,8 +7,7 @@ let selectionOnly = false;
 let currentSentenceText = "";
 let pendingTextToSpeak = null;
 let resumeFromCurrentPosition = false;
-let currentBlockIndex = -1;
-let currentSentenceIndex = -1;
+let ttsWatchdogTimer = null;
 
 async function loadState() {
     try {
@@ -18,10 +17,7 @@ async function loadState() {
             isPaused = stored.ttsState.isPaused ?? false;
             activeTtsTabId = stored.ttsState.activeTtsTabId ?? null;
             resumeFromCurrentPosition = stored.ttsState.resumeFromCurrentPosition ?? false;
-            currentSentenceText = stored.ttsState.currentSentenceText ?? "";
-            currentBlockIndex = stored.ttsState.currentBlockIndex ?? -1;
-            currentSentenceIndex = stored.ttsState.currentSentenceIndex ?? -1;
-            console.log("TTS state restored:", { runningTTS, isPaused, activeTtsTabId, resumeFromCurrentPosition, currentSentenceText, currentBlockIndex, currentSentenceIndex });
+            console.log("TTS state restored:", { runningTTS, isPaused, activeTtsTabId, resumeFromCurrentPosition });
         }
     } catch (e) {
         console.error("Failed to load TTS state:", e);
@@ -35,10 +31,7 @@ async function saveState() {
                 runningTTS,
                 isPaused,
                 activeTtsTabId,
-                resumeFromCurrentPosition,
-                currentSentenceText,
-                currentBlockIndex,
-                currentSentenceIndex
+                resumeFromCurrentPosition
             }
         });
     } catch (e) {
@@ -57,6 +50,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 async function handleTtsEvent(event) {
     if (event.type === 'word') {
+        clearTimeout(ttsWatchdogTimer);
+        ttsWatchdogTimer = null;
         if (activeTtsTabId !== null) {
             chrome.tabs.sendMessage(activeTtsTabId, {
                 action: "highlightWord",
@@ -64,8 +59,12 @@ async function handleTtsEvent(event) {
             }).catch(() => {});
         }
     } else if (event.type === 'end') {
+        clearTimeout(ttsWatchdogTimer);
+        ttsWatchdogTimer = null;
         handleAudioEnded();
     } else if (event.type === 'error') {
+        clearTimeout(ttsWatchdogTimer);
+        ttsWatchdogTimer = null;
         console.error("TTS Error:", event.errorMessage);
         stopTTS();
     }
@@ -83,6 +82,24 @@ async function handleAudioEnded() {
 
     if (activeTtsTabId !== null) {
         try {
+            if (isPaused) {
+                // When paused, peek at the next block WITHOUT advancing the index.
+                // The index will advance in resumeTTS() when playback actually continues.
+                const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "peekNextBlock" });
+                const nextText = response?.text;
+
+                if (!nextText || !nextText.trim()) {
+                    console.log("Reached end of content while paused. Stopping.");
+                    stopTTS();
+                    chrome.tabs.sendMessage(activeTtsTabId, { action: "close-toolbar" }).catch(() => {});
+                    return;
+                }
+
+                pendingTextToSpeak = nextText;
+                pushUiUpdate();
+                return;
+            }
+
             const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getNextBlock" });
             const nextText = response?.text;
 
@@ -90,12 +107,6 @@ async function handleAudioEnded() {
                 console.log("Reached end of content. Stopping.");
                 stopTTS();
                 chrome.tabs.sendMessage(activeTtsTabId, { action: "close-toolbar" }).catch(() => {});
-                return;
-            }
-
-            if (isPaused) {
-                pendingTextToSpeak = nextText;
-                pushUiUpdate();
                 return;
             }
 
@@ -149,19 +160,17 @@ async function runTTS(textToSpeak) {
     saveState();
 
     chrome.tts.speak(textToSpeak, options);
-    // Sync indices from content script after starting TTS
-    syncIndicesFromContentScript().catch(() => {});
 }
 
 function stopTTS(preserveTabId = false) {
+    clearTimeout(ttsWatchdogTimer);
+    ttsWatchdogTimer = null;
     chrome.tts.stop();
     runningTTS = false;
     isPaused = false;
     currentSentenceText = "";
     pendingTextToSpeak = null;
     resumeFromCurrentPosition = false;
-    currentBlockIndex = -1;
-    currentSentenceIndex = -1;
     pushUiUpdate();
 
     if (!preserveTabId) {
@@ -170,32 +179,8 @@ function stopTTS(preserveTabId = false) {
     saveState();
 }
 
-async function getIndicesFromContentScript(tabId) {
-    if (!tabId) return { currentBlockIndex: -1, currentSentenceIndex: -1 };
-    try {
-        const response = await chrome.tabs.sendMessage(tabId, { action: "getIndices" });
-        return response || { currentBlockIndex: -1, currentSentenceIndex: -1 };
-    } catch (error) {
-        console.warn("Failed to get indices from content script:", error);
-        return { currentBlockIndex: -1, currentSentenceIndex: -1 };
-    }
-}
-
-async function syncIndicesFromContentScript() {
-    if (!activeTtsTabId) return;
-    const indices = await getIndicesFromContentScript(activeTtsTabId);
-    currentBlockIndex = indices.currentBlockIndex;
-    currentSentenceIndex = indices.currentSentenceIndex;
-    saveState();
-}
-
-async function pauseTTS() {
+function pauseTTS() {
     if (runningTTS && !isPaused) {
-        // Get current indices from content script before pausing
-        const indices = await getIndicesFromContentScript(activeTtsTabId);
-        currentBlockIndex = indices.currentBlockIndex;
-        currentSentenceIndex = indices.currentSentenceIndex;
-        
         chrome.tts.pause();
         isPaused = true;
         resumeFromCurrentPosition = true;
@@ -207,16 +192,32 @@ async function pauseTTS() {
 async function resumeTTS() {
     if (runningTTS && isPaused) {
         if (pendingTextToSpeak) {
-            runTTS(pendingTextToSpeak);
-        } else {
-            // Ensure content script has correct indices
-            if (activeTtsTabId) {
-                chrome.tabs.sendMessage(activeTtsTabId, {
-                    action: "setIndices",
-                    currentBlockIndex: currentBlockIndex,
-                    currentSentenceIndex: currentSentenceIndex
-                }).catch(() => {});
+            // Advance the index now that we're actually continuing playback.
+            // handleAudioEnded peeked (didn't advance) while paused, so we
+            // advance here to keep indices in sync with the text being spoken.
+            let textToSpeak;
+            if (activeTtsTabId !== null) {
+                try {
+                    const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getNextBlock" });
+                    textToSpeak = response?.text;
+                } catch (e) {
+                    textToSpeak = pendingTextToSpeak;
+                }
+            } else {
+                textToSpeak = pendingTextToSpeak;
             }
+            pendingTextToSpeak = null;
+            if (textToSpeak && textToSpeak.trim()) {
+                await runTTS(textToSpeak);
+            } else {
+                stopTTS();
+            }
+        } else {
+            // Resume the paused utterance. If Chrome's TTS engine has
+            // dropped the utterance (common after long pauses), no events
+            // will fire and the extension will appear stuck. The caller
+            // (handlePlayPauseToggle) should detect this via word-event
+            // timeout if it occurs.
             chrome.tts.resume();
             isPaused = false;
             resumeFromCurrentPosition = true;
@@ -253,10 +254,55 @@ async function startPlayback(tabId) {
     }
 }
 
+async function handleRecoveryPlay() {
+    // Called when TTS appears to have been dropped by Chrome after a long
+    // pause or service-worker restart. Restart from the current block.
+    if (!activeTtsTabId) return;
+    try {
+        const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getCurrentBlock" });
+        if (response?.text?.trim()) {
+            await runTTS(response.text);
+        } else {
+            // Current block is empty, try starting fresh
+            stopTTS();
+            await startPlayback(activeTtsTabId);
+        }
+    } catch (error) {
+        console.log("Recovery failed, starting fresh:", error.message);
+        const tabId = activeTtsTabId;
+        stopTTS();
+        await startPlayback(tabId);
+    }
+}
+
 async function handlePlayPauseToggle() {
     if (runningTTS) {
-        if (isPaused) resumeTTS();
-        else pauseTTS();
+        if (isPaused) {
+            if (pendingTextToSpeak) {
+                // handleAudioEnded fired while paused; resume with the pending next block
+                await resumeTTS();
+            } else {
+                // Normal resume. If Chrome's TTS dropped the utterance (long
+                // pause / service-worker restart), resumeTTS will call
+                // chrome.tts.resume() which is a no-op. Detect that by
+                // listening for word events — if none arrive within 2 s we
+                // fall through to a fresh start.
+                await resumeTTS();
+                // Set a watchdog: if no word event arrives in 2s, restart
+                // from the current position.
+                if (!pendingTextToSpeak) {
+                    clearTimeout(ttsWatchdogTimer);
+                    ttsWatchdogTimer = setTimeout(() => {
+                        if (runningTTS && !isPaused) {
+                            console.log("TTS watchdog: no word events after resume, restarting from current position.");
+                            handleRecoveryPlay();
+                        }
+                    }, 2000);
+                }
+            }
+        } else {
+            pauseTTS();
+        }
     } else if (activeTtsTabId && resumeFromCurrentPosition) {
         try {
             const tab = await chrome.tabs.get(activeTtsTabId);
@@ -268,35 +314,12 @@ async function handlePlayPauseToggle() {
                 startPlayback(null);
                 return;
             }
-            // Try to find block by stored text first
-            let textToSpeak = null;
-            if (currentSentenceText) {
-                try {
-                    const findResponse = await chrome.tabs.sendMessage(activeTtsTabId, {
-                        action: "findBlockByExactText",
-                        text: currentSentenceText
-                    });
-                    if (findResponse?.found) {
-                        textToSpeak = currentSentenceText;
-                        currentBlockIndex = findResponse.blockIndex;
-                        currentSentenceIndex = findResponse.sentenceIndex;
-                        saveState();
-                    }
-                } catch (e) {
-                    console.warn("findBlockByExactText failed:", e);
-                }
-            }
-            if (!textToSpeak) {
-                const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getCurrentBlock" });
-                if (response?.text?.trim()) {
-                    textToSpeak = response.text;
-                }
-            }
-            if (textToSpeak) {
+            const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getCurrentBlock" });
+            if (response?.text?.trim()) {
                 runningTTS = true;
                 isPaused = false;
                 resumeFromCurrentPosition = false;
-                await runTTS(textToSpeak);
+                await runTTS(response.text);
             } else {
                 startPlayback(activeTtsTabId);
             }
@@ -371,29 +394,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "nextButton": handleNext(); break;
         case "prevButton": handlePrevious(); break;
         case "stopTTS": stopTTS(); break;
-        case "contentScriptReady":
-            const tabId = sender.tab?.id;
-            if (tabId && tabId === activeTtsTabId && resumeFromCurrentPosition && currentSentenceText) {
-                // Send stored indices and try to find block by exact text
-                chrome.tabs.sendMessage(tabId, {
-                    action: "setIndices",
-                    currentBlockIndex: currentBlockIndex,
-                    currentSentenceIndex: currentSentenceIndex
-                }).catch(() => {});
-                chrome.tabs.sendMessage(tabId, {
-                    action: "findBlockByExactText",
-                    text: currentSentenceText
-                }).then(response => {
-                    if (response?.found) {
-                        console.log("Found stored block after content script ready");
-                        // Update stored indices with found ones (they might be more accurate)
-                        currentBlockIndex = response.blockIndex;
-                        currentSentenceIndex = response.sentenceIndex;
-                        saveState();
-                    }
-                }).catch(() => {});
-            }
-            break;
     }
 });
 
