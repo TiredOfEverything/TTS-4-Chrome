@@ -405,6 +405,18 @@ async function getPreviousBlock() {
 	}
 }
 
+function getCurrentBlock() {
+    if (readableBlocks.length === 0) extractReadableBlocks();
+    
+    if (currentNavigationMode === "sentence" && currentSentenceIndex !== -1) {
+        const sentence = readableSentences[currentSentenceIndex];
+        return sentence?.text || "";
+    } else if (currentBlockIndex !== -1) {
+        return readableBlocks[currentBlockIndex]?.text || "";
+    }
+    return "";
+}
+
 async function peekNextBlockText() {
     await loadNavigationMode();
     if (currentNavigationMode === "sentence") {
@@ -953,6 +965,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 				highlightCurrentBlock();
 				sendResponse({ text });
 			});
+			return true;
+
+		case "getCurrentBlock":
+			const currentText = getCurrentBlock();
+			highlightCurrentBlock();
+			sendResponse({ text: currentText });
 			return true;
 
 		case "getBlockContainingSelection":

@@ -6,6 +6,7 @@ let activeTtsTabId = null;
 let selectionOnly = false;
 let currentSentenceText = "";
 let pendingTextToSpeak = null;
+let resumeFromCurrentPosition = false;
 
 chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({ id: "readAloud", title: "Read Aloud", contexts: ["page"] });
@@ -115,6 +116,7 @@ function stopTTS(preserveTabId = false) {
     isPaused = false;
     currentSentenceText = "";
     pendingTextToSpeak = null;
+    resumeFromCurrentPosition = false;
     pushUiUpdate();
 
     if (!preserveTabId) {
@@ -126,6 +128,7 @@ function pauseTTS() {
     if (runningTTS && !isPaused) {
         chrome.tts.pause();
         isPaused = true;
+        resumeFromCurrentPosition = true;
         pushUiUpdate();
     }
 }
@@ -137,6 +140,7 @@ function resumeTTS() {
         } else {
             chrome.tts.resume();
             isPaused = false;
+            resumeFromCurrentPosition = true;
             pushUiUpdate();
         }
     }
@@ -167,10 +171,24 @@ async function startPlayback(tabId) {
     }
 }
 
-function handlePlayPauseToggle() {
+async function handlePlayPauseToggle() {
     if (runningTTS) {
         if (isPaused) resumeTTS();
         else pauseTTS();
+    } else if (activeTtsTabId && resumeFromCurrentPosition) {
+        try {
+            const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getCurrentBlock" });
+            if (response?.text?.trim()) {
+                runningTTS = true;
+                isPaused = false;
+                resumeFromCurrentPosition = false;
+                await runTTS(response.text);
+            } else {
+                startPlayback(activeTtsTabId);
+            }
+        } catch (error) {
+            startPlayback(activeTtsTabId);
+        }
     } else if (activeTtsTabId) {
         startPlayback(activeTtsTabId);
     } else {
