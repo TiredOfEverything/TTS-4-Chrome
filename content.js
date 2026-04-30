@@ -373,6 +373,8 @@ async function getNextBlock() {
 	if (currentNavigationMode === "sentence") {
 		if (currentSentenceIndex < readableSentences.length - 1) {
 			currentSentenceIndex++;
+		} else {
+			return "";
 		}
         const sentence = readableSentences[currentSentenceIndex];
 		currentBlockIndex = sentence?.blockIndex ?? currentBlockIndex;
@@ -380,6 +382,9 @@ async function getNextBlock() {
 	} else {
 		if (currentBlockIndex < readableBlocks.length - 1) {
 			currentBlockIndex++;
+		} else {
+			currentSentenceIndex = -1;
+			return "";
 		}
 		currentSentenceIndex = -1;
 		return readableBlocks[currentBlockIndex]?.text || "";
