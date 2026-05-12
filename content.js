@@ -114,7 +114,9 @@ function normalizeKeepCase(str) {
 
 // Normalized text for Matching logic (Lower Cased)
 function normalize(str) {
-	return normalizeKeepCase(str).toLowerCase();
+	return normalizeKeepCase(str)
+		.replace(/[\u200B-\u200D\uFEFF]/g, "")
+		.toLowerCase();
 }
 
 let voiceOptionsPanelResizeHandler = null;
@@ -289,7 +291,15 @@ function extractReadableBlocks() {
 
 	const selector = "p, li, h1, h2, h3, h4, h5, h6";
 	const fragBlocks = Array.from(frag.querySelectorAll(selector));
-	const liveBlocks = Array.from(document.querySelectorAll(selector));
+
+	// Collect live DOM candidates: standard text elements plus text-containing divs
+	// (sites like Reuters use <div> for paragraphs instead of <p>)
+	const liveBlockSet = new Set();
+	document.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, div").forEach(el => {
+		const t = el.textContent.trim();
+		if (t && t.length > 20) liveBlockSet.add(el);
+	});
+	const liveBlocks = Array.from(liveBlockSet);
 
 	let liveIdx = 0;
 	for (const fragEl of fragBlocks) {
@@ -304,7 +314,7 @@ function extractReadableBlocks() {
             const cleanTextForComparison = normalize(dirtyText);
             const fragCleanText = normalize(text);
 
-			if (liveEl.tagName === fragEl.tagName && cleanTextForComparison === fragCleanText) {
+			if (cleanTextForComparison === fragCleanText) {
 
                 // Use normalizeKeepCase for the actual TTS text to preserve "U.S." casing for Segmenter
                 const cleanText = normalizeKeepCase(dirtyText);
