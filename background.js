@@ -100,7 +100,11 @@ async function handleAudioEnded() {
                 return;
             }
 
-            const response = await chrome.tabs.sendMessage(activeTtsTabId, { action: "getNextBlock" });
+            const prefetchSettings = await chrome.storage.sync.get({ prefetchNextSentence: false });
+            const usePrefetch = prefetchSettings.prefetchNextSentence === true;
+            const response = await chrome.tabs.sendMessage(activeTtsTabId, {
+                action: usePrefetch ? "consumeNextBlock" : "getNextBlock"
+            });
             const nextText = response?.text;
 
             if (!nextText || !nextText.trim()) {

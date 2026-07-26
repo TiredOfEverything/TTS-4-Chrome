@@ -94,12 +94,21 @@ applyHighlightColors();
 
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync') {
-        if (changes.highlightColor || changes.highlightTransparency || 
+        if (changes.highlightColor || changes.highlightTransparency ||
             changes.wordHighlightColor || changes.wordHighlightTransparency) {
             applyHighlightColors();
         }
         if (changes.readingAreaTop) readingAreaTop = parseFloat(changes.readingAreaTop.newValue);
         if (changes.readingAreaBottom) readingAreaBottom = parseFloat(changes.readingAreaBottom.newValue);
+        if (changes.prefetchNextSentence) {
+            prefetchEnabled = changes.prefetchNextSentence.newValue === true;
+            invalidatePrefetchCache();
+            if (prefetchEnabled) prefetchNextBlockIfEnabled();
+        }
+        if (changes.navigationMode) {
+            invalidatePrefetchCache();
+            if (prefetchEnabled) prefetchNextBlockIfEnabled();
+        }
     }
 });
 
@@ -364,6 +373,7 @@ function extractReadableBlocks() {
 async function getFirstBlock() {
 	if (readableBlocks.length === 0) extractReadableBlocks();
 	await loadNavigationMode();
+	invalidatePrefetchCache();
 	
 	if (currentNavigationMode === "sentence") {
 		currentSentenceIndex = 0;
@@ -403,6 +413,7 @@ async function getNextBlock() {
 
 async function getPreviousBlock() {
 	await loadNavigationMode();
+	invalidatePrefetchCache();
 	
 	if (currentNavigationMode === "sentence") {
 		if (currentSentenceIndex > 0) {
@@ -445,6 +456,72 @@ async function peekNextBlockText() {
     }
     return null;
 }
+
+let prefetchedNextBlock = null;
+let hasPrefetchedNext = false;
+let prefetchEnabled = false;
+
+async function loadPrefetchSetting() {
+    try {
+        const stored = await chrome.storage.sync.get({ prefetchNextSentence: false });
+        prefetchEnabled = stored.prefetchNextSentence === true;
+    } catch (e) {
+        prefetchEnabled = false;
+    }
+}
+
+function invalidatePrefetchCache() {
+    prefetchedNextBlock = null;
+    hasPrefetchedNext = false;
+}
+
+async function prefetchNextBlockIfEnabled() {
+    if (!prefetchEnabled) {
+        invalidatePrefetchCache();
+        return;
+    }
+    try {
+        prefetchedNextBlock = await peekNextBlockText();
+        hasPrefetchedNext = true;
+    } catch (e) {
+        invalidatePrefetchCache();
+    }
+}
+
+async function consumeNextBlock() {
+    await loadNavigationMode();
+    if (hasPrefetchedNext) {
+        const cachedText = prefetchedNextBlock;
+        invalidatePrefetchCache();
+
+        if (!cachedText || !cachedText.trim()) {
+            return "";
+        }
+
+        if (currentNavigationMode === "sentence") {
+            if (currentSentenceIndex < readableSentences.length - 1) {
+                currentSentenceIndex++;
+            } else {
+                return "";
+            }
+            const sentence = readableSentences[currentSentenceIndex];
+            currentBlockIndex = sentence?.blockIndex ?? currentBlockIndex;
+            return cachedText;
+        } else {
+            if (currentBlockIndex < readableBlocks.length - 1) {
+                currentBlockIndex++;
+            } else {
+                currentSentenceIndex = -1;
+                return "";
+            }
+            currentSentenceIndex = -1;
+            return cachedText;
+        }
+    }
+    return await getNextBlock();
+}
+
+loadPrefetchSetting();
 
 function clearWordHighlight() {
     if (currentWordHighlightSpan) {
@@ -602,6 +679,7 @@ function highlightCurrentBlock() {
 async function getBlockContainingSelection(selectionText) {
 	if (readableBlocks.length === 0) extractReadableBlocks();
 	await loadNavigationMode();
+	invalidatePrefetchCache();
 
 	const sel = window.getSelection();
     // Use normalizeKeepCase to preserve text structure
@@ -975,6 +1053,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 			});
 			return true;
 
+		case "consumeNextBlock":
+			consumeNextBlock().then(text => {
+				highlightCurrentBlock();
+				sendResponse({ text });
+			});
+			return true;
+
 		case "getPreviousBlock":
 			getPreviousBlock().then(text => {
 				highlightCurrentBlock();
@@ -1004,6 +1089,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "startBlockPlayback":
             clearWordHighlight();
             lastHighlightedWordIndex = -1;
+            invalidatePrefetchCache();
+            if (prefetchEnabled) prefetchNextBlockIfEnabled();
             return;
 
         case "highlightWord":
@@ -1048,6 +1135,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
         case "setIndices":
             if (readableBlocks.length === 0) extractReadableBlocks();
+            invalidatePrefetchCache();
             currentBlockIndex = message.currentBlockIndex ?? currentBlockIndex;
             currentSentenceIndex = message.currentSentenceIndex ?? currentSentenceIndex;
             highlightCurrentBlock();
@@ -1061,6 +1149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return;
             }
             if (readableBlocks.length === 0) extractReadableBlocks();
+            invalidatePrefetchCache();
             // Search in blocks first
             let foundIdx = readableBlocks.findIndex(block => block.text === text);
             if (foundIdx !== -1) {

@@ -7,6 +7,7 @@
     const pitchValue = document.getElementById("pitchValue");
     const voiceSelect = document.getElementById("voiceSelect");
     const navModeSelect = document.getElementById("navModeSelect");
+    const prefetchNextSentenceInput = document.getElementById("prefetchNextSentence");
     const highlightColorInput = document.getElementById("highlightColorInput");
     const highlightTransparencyInput = document.getElementById("highlightTransparencyInput");
     const highlightTransparencyValue = document.getElementById("highlightTransparencyValue");
@@ -22,8 +23,9 @@
     const STORAGE_DEFAULTS = {
         rate: "1.0",
         pitch: "1.0",
-        voice: "", 
+        voice: "",
         navigationMode: "block",
+        prefetchNextSentence: false,
         highlightColor: "#add8e6",
         highlightTransparency: 25,
         wordHighlightColor: "#ffff00",
@@ -99,6 +101,7 @@
     populateVoices(settings.voice);
 
     navModeSelect.value = settings.navigationMode;
+    prefetchNextSentenceInput.checked = settings.prefetchNextSentence === true;
     highlightColorInput.value = settings.highlightColor;
     highlightTransparencyInput.value = settings.highlightTransparency;
     highlightTransparencyValue.textContent = `${settings.highlightTransparency}%`;
@@ -127,6 +130,11 @@
     navModeSelect.addEventListener("change", async () => {
         const mode = navModeSelect.value;
         await saveSetting("navigationMode", mode);
+    });
+
+    prefetchNextSentenceInput.addEventListener("change", async () => {
+        const checked = prefetchNextSentenceInput.checked;
+        await saveSetting("prefetchNextSentence", checked);
     });
 
     highlightColorInput.addEventListener("input", async () => {

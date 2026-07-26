@@ -53,6 +53,15 @@
             flex-direction: column;
             gap: 0.5em;
         }
+        label.checkbox-label {
+            flex-direction: row;
+            align-items: center;
+            gap: 0.5em;
+        }
+        label.checkbox-label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
         input[type="range"] {
             width: 100%;
         }
@@ -125,6 +134,14 @@
                         <option value="sentence">Sentence</option>
                     </select>
                 </label>
+
+                <div class="section-title">Performance</div>
+                <div class="highlight-section">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="prefetchNextSentence" data-setting="prefetchNextSentence" />
+                        <span>Prefetch next sentence (cache it while reading the current one)</span>
+                    </label>
+                </div>
 
                 <div class="section-title">Reading Area</div>
                 <div class="highlight-section button-group">
